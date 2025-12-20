@@ -1,0 +1,30 @@
+<?php
+
+namespace App\Filament\Inventario\Resources\PromocionResource\Pages;
+
+use App\Filament\Inventario\Resources\PromocionResource;
+use Filament\Actions;
+use Filament\Resources\Pages\EditRecord;
+
+class EditPromocion extends EditRecord
+{
+    protected static string $resource = PromocionResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Actions\DeleteAction::make(),
+        ];
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (!empty($data['url_imagen']) && is_string($data['url_imagen'])) {
+            $bucketUrl = 'https://' . env('AWS_BUCKET') . '.s3.' . env('AWS_DEFAULT_REGION') . '.amazonaws.com/';
+            $data['url_imagen'] = $bucketUrl . $data['url_imagen'];
+        } else {
+            unset($data['url_imagen']);
+        }
+        return $data;
+    }
+}
