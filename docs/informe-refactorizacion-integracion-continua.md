@@ -1,34 +1,34 @@
-# Informe de refactorización e integración continua
+# Sprint de Refactorización e Integración Continua del Sistema
 
 **Proyecto:** Sistema de información Ferretería Shamullo  
-**Repositorio:** https://github.com/SamStorm2003/ferreteria_shamullo.git  
-**Rol asumido:** Software Engineer y DevOps Engineer  
+**Repositorio:** <https://github.com/SamStorm2003/ferreteria_shamullo.git>  
+**Usuario GitHub:** SamStorm2003  
 **Fecha:** 13 de julio de 2026
 
 ## Introducción
 
-Este informe presenta la revisión y mejora del sistema de información de la Ferretería Shamullo. El sistema fue desarrollado para apoyar tareas importantes de una ferretería, como el registro de productos, control de inventario, compras, ventas, clientes, proveedores, promociones, facturas, reembolsos y reportes.
+Este informe presenta la revisión y mejora del sistema de información de la Ferretería Shamullo. El sistema fue creado para apoyar el trabajo diario de una ferretería, especialmente en áreas como productos, inventario, compras, ventas, clientes, proveedores, promociones, facturas, reembolsos y reportes.
 
-La revisión se hizo sobre el código real del proyecto. La idea principal no fue cambiar lo que el sistema hace para el usuario, sino ordenar mejor algunas partes internas para que el proyecto sea más fácil de entender, mantener y seguir mejorando.
+La revisión se hizo sobre el proyecto real. No se buscó cambiar lo que el usuario ve en pantalla, sino ordenar mejor algunas partes internas para que el sistema sea más fácil de entender, corregir y mejorar en el futuro.
 
-También se preparó un flujo básico de Integración Continua. Dicho de forma sencilla, esto significa que el proyecto puede revisarse automáticamente cuando se suben cambios al repositorio, ayudando a detectar errores antes de que lleguen a la versión principal.
+También se preparó un flujo básico de Integración Continua. En palabras simples, esto permite que el proyecto se revise automáticamente cuando se suben cambios al repositorio. Así se pueden detectar errores antes de que afecten la versión principal.
 
 ## Parte 1. Diagnóstico del código
 
-Se revisaron varias áreas del sistema, especialmente los archivos relacionados con ventas, facturación, chatbot y configuración del repositorio. Durante esta revisión se encontraron oportunidades de mejora en organización, tamaño de métodos, repetición de lógica, nombres poco claros y ausencia de revisión automática.
+Se revisaron archivos relacionados con ventas, facturación, chatbot, pruebas y configuración del repositorio. En la revisión se encontraron varias oportunidades de mejora.
 
 | Problema | Ubicación | Riesgo | Mejora propuesta |
 |---|---|---|---|
-| Un archivo de ventas tenía demasiadas tareas juntas: pantalla de ventas, reglas de venta y generación de factura. | `app/Filament/Vendedor/Resources/VentaResource.php` | Si se modificaba la facturación, podía afectarse la pantalla de ventas. Además, el archivo era más difícil de leer. | Separar la generación de facturas en un archivo propio. |
-| El chatbot tenía muchos `if` seguidos para reconocer preguntas del usuario. | `app/Http/Controllers/Api/ChatController.php` | Cada nueva pregunta hacía crecer el método y aumentaba el desorden. | Organizar las preguntas en una lista de intenciones más fácil de ampliar. |
-| Había un número fijo escrito directamente en el código para el límite diario de consultas a Gemini. | `ChatController.php` | Si se quería cambiar ese límite, había que buscar el número dentro del método. | Crear una constante con un nombre claro. |
-| Existían variables calculadas que luego no se usaban. | `ChatController.php` | Confundían al revisar el código, porque parecía que cumplían una función pero no afectaban el resultado. | Eliminar esas variables para dejar el método más limpio. |
-| Algunos textos del proyecto tenían problemas de acentos o caracteres extraños. | Varios archivos del sistema | Puede verse mal en pantalla y dificulta corregir textos. | Hacer una limpieza posterior de textos y codificación. |
-| No había un flujo automático para revisar pruebas, sintaxis y compilación. | No existía `.github/workflows/ci.yml` | Los errores podían descubrirse tarde, después de subir cambios importantes. | Crear un flujo de revisión automática con GitHub Actions. |
+| Un archivo de ventas tenía demasiadas tareas juntas: pantalla de ventas, reglas de venta y generación de factura. | `app/Filament/Vendedor/Resources/VentaResource.php` | Si se cambiaba algo de facturación, también podía romperse la pantalla de ventas. | Separar la generación de facturas en un archivo propio. |
+| El chatbot tenía muchos `if` seguidos para reconocer preguntas del usuario. | `app/Http/Controllers/Api/ChatController.php` | Cada nueva pregunta hacía crecer más el método y volvía el código más difícil de seguir. | Ordenar las preguntas en una lista de intenciones. |
+| Había un número fijo escrito directamente en el código para el límite diario de consultas a Gemini. | `ChatController.php` | El número no explicaba por sí solo qué significaba. | Cambiarlo por un nombre claro: `LIMITE_DIARIO_GEMINI`. |
+| Existían variables calculadas que luego no se usaban. | `ChatController.php` | Confundían al leer el código porque parecían importantes, pero no afectaban el resultado. | Eliminar esas variables. |
+| Algunos textos tenían problemas de acentos o caracteres extraños. | Varios archivos del sistema | Puede verse mal en pantalla y dificulta buscar textos. | Hacer una limpieza posterior de textos y codificación. |
+| No había un flujo automático para revisar pruebas, sintaxis y compilación. | No existía `.github/workflows/ci.yml` | Los errores podían descubrirse tarde, después de subir cambios. | Crear un flujo con GitHub Actions. |
 
 ## Parte 2. Refactorización aplicada
 
-Refactorizar significa mejorar el orden interno del código sin cambiar el funcionamiento que ve el usuario. En este proyecto se aplicaron varias mejoras concretas.
+Refactorizar significa mejorar el orden interno del código sin cambiar lo que el sistema hace para el usuario. En este proyecto se aplicaron mejoras concretas y pequeñas, pero importantes.
 
 ### 1. Separar la facturación en una clase propia
 
@@ -36,7 +36,7 @@ Refactorizar significa mejorar el orden interno del código sin cambiar el funci
 **Archivo antes:** `VentaResource.php`  
 **Archivo nuevo:** `app/Services/Facturacion/FacturaVentaService.php`
 
-Antes, el archivo de ventas también preparaba y enviaba los datos de la factura. Eso hacía que el archivo creciera demasiado y mezclara cosas distintas.
+Antes, el archivo de ventas también preparaba y enviaba los datos de la factura. Eso mezclaba dos tareas distintas: mostrar la venta y generar la factura.
 
 **Antes:**
 
@@ -61,16 +61,22 @@ Antes, el archivo de ventas también preparaba y enviaba los datos de la factura
 })
 ```
 
-Ahora la pantalla de ventas solo llama al servicio de facturación. La preparación de la factura quedó en un lugar más adecuado.
+Ahora el archivo de ventas solo llama al servicio de facturación. La preparación de la factura quedó en un lugar más adecuado.
 
-**Principio mejorado:** SOLID y Clean Code. En palabras simples, cada parte queda encargada de una tarea más clara.
+**Principio mejorado:** SOLID y Clean Code. Dicho de forma sencilla, cada parte queda encargada de una tarea más clara.
+
+**Capturas de evidencia:**
+
+![Antes de refactorizar facturación](evidencias/01_antes_facturacion.png)
+
+![Después de refactorizar facturación](evidencias/02_despues_facturacion.png)
 
 ### 2. Ordenar la forma en que responde el chatbot
 
 **Técnica aplicada:** Extract Method y Remove Duplicate Code  
 **Archivo:** `ChatController.php`
 
-Antes, el chatbot revisaba el mensaje con muchas condiciones seguidas. Funcionaba, pero era menos cómodo de mantener.
+Antes, el chatbot revisaba el mensaje con muchas condiciones seguidas. Funcionaba, pero era incómodo de mantener.
 
 **Antes:**
 
@@ -111,7 +117,13 @@ private function contiene(string $mensaje, array $palabrasClave): bool
 
 Con esto, agregar una nueva respuesta al chatbot es más ordenado.
 
-**Principio mejorado:** DRY y KISS. Es decir, se repite menos código y se mantiene simple.
+**Principio mejorado:** DRY y KISS. En palabras simples, se repite menos código y se mantiene más fácil de leer.
+
+**Capturas de evidencia:**
+
+![Antes del chatbot](evidencias/03_antes_chatbot.png)
+
+![Después del chatbot](evidencias/04_despues_chatbot.png)
 
 ### 3. Cambiar un número fijo por un nombre claro
 
@@ -130,7 +142,7 @@ Después quedó con un nombre claro:
 private const LIMITE_DIARIO_GEMINI = 10;
 ```
 
-Y se usa de esta forma:
+Y se usa así:
 
 ```php
 if ($consultasRealizadas >= self::LIMITE_DIARIO_GEMINI) {
@@ -138,9 +150,9 @@ if ($consultasRealizadas >= self::LIMITE_DIARIO_GEMINI) {
 }
 ```
 
-Esto hace que el código se entienda mejor. Ya no se ve solo el número `10`, sino que se sabe que representa el límite diario de consultas.
+Esto ayuda porque el código ya no muestra solo un número suelto. Ahora se entiende que ese `10` representa el límite diario de consultas a Gemini.
 
-**Principio mejorado:** Clean Code. Los nombres ayudan a entender el propósito de cada dato.
+**Principio mejorado:** Clean Code. Los nombres ayudan a entender mejor el propósito de cada dato.
 
 ### 4. Eliminar código que no aportaba
 
@@ -175,44 +187,48 @@ Para el proyecto se diseñó e implementó un flujo básico de Integración Cont
 
 ### Repositorio Git
 
-El repositorio usado para el proyecto es:
+El repositorio correcto del proyecto es:
 
 ```text
 https://github.com/SamStorm2003/ferreteria_shamullo.git
 ```
 
-Se actualizó el `origin` local para apuntar a ese repositorio:
+El remoto local `origin` quedó apuntando a ese repositorio:
 
 ```text
-origin https://github.com/SamStorm2003/ferreteria_shamullo.git
+origin  https://github.com/SamStorm2003/ferreteria_shamullo.git
+```
+
+También se corrigió el nombre local de Git para los siguientes commits:
+
+```text
+SamStorm2003
 ```
 
 ### Estrategia de trabajo
 
 Se recomienda usar **GitHub Flow**, porque es una forma sencilla de trabajar:
 
-1. Se crea una rama para un cambio.
-2. Se hacen los ajustes necesarios.
-3. Se crea un commit con un mensaje claro.
-4. Se suben los cambios a GitHub.
-5. Se revisa que el flujo automático pase correctamente.
-6. Se une el cambio a la rama principal.
+1. Crear una rama para un cambio.
+2. Hacer los ajustes necesarios.
+3. Crear un commit con un mensaje claro.
+4. Subir los cambios a GitHub.
+5. Revisar que el flujo automático pase correctamente.
+6. Unir el cambio a la rama principal.
 
 ### Flujo automático propuesto
-
-El flujo realiza estas tareas:
 
 | Etapa | Qué hace |
 |---|---|
 | Descargar código | Toma el proyecto desde GitHub. |
 | Preparar PHP | Prepara el entorno para Laravel. |
-| Preparar Node | Prepara el entorno para compilar la parte visual. |
+| Preparar Node | Prepara el entorno para la parte visual. |
 | Instalar dependencias | Instala lo necesario para que el sistema funcione. |
 | Revisar sintaxis | Busca errores básicos en archivos PHP. |
 | Ejecutar pruebas | Corre las pruebas del sistema. |
 | Compilar frontend | Verifica que la parte visual pueda generarse. |
 | Revisar calidad | Deja preparado SonarQube si se configura un token. |
-| Despliegue simulado | Simula que el sistema pasó a una etapa de entrega. |
+| Despliegue simulado | Simula que el sistema pasó una revisión final. |
 
 ### Diagrama del flujo
 
@@ -241,26 +257,31 @@ Análisis de calidad
 Despliegue simulado
 ```
 
-### Evidencia de commit y push
+**Captura de evidencia del pipeline:**
 
-Se realizó un commit descriptivo:
+![Pipeline CI](evidencias/05_pipeline_ci.png)
+
+### Evidencia de GitHub
+
+Se realizó un commit descriptivo para la refactorización:
 
 ```text
 99d4798 refactor: extraer facturacion y agregar pipeline ci
 ```
 
-También se realizó el push al repositorio correcto:
+También existe un commit para la documentación:
 
 ```text
-To https://github.com/SamStorm2003/ferreteria_shamullo.git
-36270d2..99d4798  main -> main
+ba520c7 docs: agregar informe de refactorizacion e integracion continua
 ```
 
-Esto cumple con la parte de GitHub solicitada en la actividad.
+La captura siguiente muestra el repositorio correcto y el historial de commits:
+
+![Repositorio e historial Git](evidencias/06_git_historial.png)
 
 ### Evidencia de pruebas
 
-Se ejecutó el comando:
+Se ejecutó:
 
 ```text
 composer test
@@ -284,7 +305,7 @@ Resultado: la compilación terminó correctamente.
 
 ### ¿Qué problemas encontró en su código?
 
-Se encontraron archivos con demasiadas tareas juntas, métodos largos, condiciones repetidas, variables sin uso y falta de una revisión automática antes de subir cambios. También se vio que algunos textos tenían problemas de codificación.
+Se encontraron archivos con demasiadas tareas juntas, métodos largos, condiciones repetidas, variables sin uso y falta de una revisión automática antes de subir cambios. También se observaron algunos textos con problemas de acentos.
 
 ### ¿Qué técnica de refactorización aportó mayor beneficio?
 
@@ -292,7 +313,7 @@ La mejora que más aportó fue separar la facturación en una clase propia. Esto
 
 ### ¿Qué principio de diseño aplicó?
 
-Se aplicó principalmente la idea de que cada parte del sistema debe encargarse de una tarea clara. También se buscó que el código sea simple, entendible y con menos repetición.
+Se aplicó principalmente la idea de separar responsabilidades. En palabras simples, cada parte del sistema debe encargarse de una tarea clara. También se buscó que el código sea simple, entendible y con menos repetición.
 
 ### ¿Cómo contribuiría la Integración Continua al mantenimiento?
 
@@ -312,7 +333,7 @@ Estas prácticas se relacionan con:
 
 El trabajo realizado permitió mejorar el proyecto sin cambiar su funcionamiento principal. Se ordenó la facturación, se simplificó el chatbot, se eliminaron partes innecesarias y se preparó un flujo automático para revisar el sistema.
 
-Además, el proyecto quedó vinculado y actualizado en el repositorio correcto de GitHub:
+Además, el proyecto quedó vinculado al repositorio correcto:
 
 ```text
 https://github.com/SamStorm2003/ferreteria_shamullo.git
