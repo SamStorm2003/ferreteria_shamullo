@@ -21,6 +21,8 @@ use Illuminate\Database\QueryException;
 
 class ChatController extends Controller
 {
+    private const LIMITE_DIARIO_GEMINI = 10;
+
     public function chat(Request $request)
     {
         $request->validate([
@@ -34,55 +36,74 @@ class ChatController extends Controller
 
     protected function procesarMensaje(string $mensaje): string
     {
-        if (str_contains($mensaje, 'vendieron') || str_contains($mensaje, 'más vendidos')) {
-            return $this->recomendarProductos();
-        }
-
-        if (str_contains($mensaje, 'movimiento') || str_contains($mensaje, 'cambio de almacen')) {
-            return $this->consultarMovimientosAlmacen();
-        }
-
-        if (str_contains($mensaje, 'compras') || str_contains($mensaje, 'compra')) {
-            return $this->analizarCompras();
-        }
-
-        if (str_contains($mensaje, 'recomienda') || str_contains($mensaje, 'recomendar')) {
-            return $this->recomendarProductos();
-        }
-
-        if (str_contains($mensaje, 'bajo stock') || str_contains($mensaje, 'reponer')) {
-            return $this->consultarBajoStock();
-        }
-
-        if (str_contains($mensaje, 'inventario') || (str_contains($mensaje, 'stock') && !str_contains($mensaje, 'bajo'))) {
-            return $this->consultarInventario($mensaje);
-        }
-
-        if (str_contains($mensaje, 'producto')) {
-            return $this->consultarProductos($mensaje);
-        }
-
-        if (str_contains($mensaje, 'proveedor')) {
-            return $this->consultarProveedor($mensaje);
-        }
-
-        if (str_contains($mensaje, 'pronóstico') || str_contains($mensaje, 'ventas') || str_contains($mensaje, 'predicción')) {
-            return $this->pronosticarVentas();
-        }
-
-        if (str_contains($mensaje, 'promociones')) {
-            return $this->consultarPromociones();
-        }
-
-        if (str_contains($mensaje, 'márgenes') || str_contains($mensaje, 'ganancia')) {
-            return $this->analizarMargenes();
-        }
-
-        if (str_contains($mensaje, 'rotación') || str_contains($mensaje, 'inventario lento')) {
-            return $this->analizarRotacionInventario();
+        foreach ($this->intenciones() as $intencion) {
+            if (($intencion['aplica'])($mensaje)) {
+                return ($intencion['responde'])($mensaje);
+            }
         }
 
         return $this->consultarGeminiConContexto($mensaje);
+    }
+
+    private function intenciones(): array
+    {
+        return [
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['vendieron', 'más vendidos', 'recomienda', 'recomendar']),
+                'responde' => fn(): string => $this->recomendarProductos(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['movimiento', 'cambio de almacen']),
+                'responde' => fn(): string => $this->consultarMovimientosAlmacen(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['compras', 'compra']),
+                'responde' => fn(): string => $this->analizarCompras(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['bajo stock', 'reponer']),
+                'responde' => fn(): string => $this->consultarBajoStock(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => str_contains($mensaje, 'inventario') || (str_contains($mensaje, 'stock') && ! str_contains($mensaje, 'bajo')),
+                'responde' => fn(string $mensaje): string => $this->consultarInventario($mensaje),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => str_contains($mensaje, 'producto'),
+                'responde' => fn(string $mensaje): string => $this->consultarProductos($mensaje),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => str_contains($mensaje, 'proveedor'),
+                'responde' => fn(string $mensaje): string => $this->consultarProveedor($mensaje),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['pronóstico', 'ventas', 'predicción']),
+                'responde' => fn(): string => $this->pronosticarVentas(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => str_contains($mensaje, 'promociones'),
+                'responde' => fn(): string => $this->consultarPromociones(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['márgenes', 'ganancia']),
+                'responde' => fn(): string => $this->analizarMargenes(),
+            ],
+            [
+                'aplica' => fn(string $mensaje): bool => $this->contiene($mensaje, ['rotación', 'inventario lento']),
+                'responde' => fn(): string => $this->analizarRotacionInventario(),
+            ],
+        ];
+    }
+
+    private function contiene(string $mensaje, array $palabrasClave): bool
+    {
+        foreach ($palabrasClave as $palabraClave) {
+            if (str_contains($mensaje, $palabraClave)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function obtenerContextoBaseDatos(): array
@@ -372,23 +393,24 @@ class ChatController extends Controller
 
     protected function consultarGeminiConContexto(string $mensaje): string
     {
+        $apiKey = config('services.gemini.api_key');
+        $model = config('services.gemini.model') ?: 'gemini-1.5-flash';
+
+        if (blank($apiKey)) {
+            return 'La API de Gemini no esta configurada. Define GEMINI_API_KEY en el archivo .env.';
+        }
+
         $usuario = request()->user()->id ?? request()->ip();
         $cacheKey = 'consulta_gemini_' . $usuario . '_' . now()->format('Y-m-d');
         $consultasRealizadas = Cache::get($cacheKey, 0);
-        $limiteDiario = 10;
-        if ($consultasRealizadas >= $limiteDiario) {
-            return '⚠️ Has alcanzado el límite diario de ' . $limiteDiario . ' consultas a la IA. Intenta nuevamente mañana.';
+        if ($consultasRealizadas >= self::LIMITE_DIARIO_GEMINI) {
+            return '⚠️ Has alcanzado el límite diario de ' . self::LIMITE_DIARIO_GEMINI . ' consultas a la IA. Intenta nuevamente mañana.';
         }
-        Cache::put($cacheKey, $consultasRealizadas + 1, now()->endOfDay());
         $contexto = $this->obtenerContextoBaseDatos();
         if (isset($contexto['error'])) {
             return 'Error al obtener datos del negocio: ' . $contexto['error'];
         }
-        $dias_periodo = 90;
-        $semanas_periodo = $dias_periodo / 7;
-        $unidades_semanales = $contexto['ventas']['total_unidades'] > 0
-            ? round($contexto['ventas']['total_unidades'] / $semanas_periodo)
-            : 0;
+        $ubicacionPrincipal = $contexto['almacenes'][0]['ubicacion'] ?? 'tu zona principal';
         $prompt = <<<EOD
 **Contexto Empresarial Completo** (Datos de los últimos 3 meses, a menos que se especifique):
 - **Ventas**:
@@ -419,40 +441,74 @@ class ChatController extends Controller
 1. **Contexto inicial**: Reconoce que la empresa está en sus primeras etapas, con ventas nulas y un inventario mínimo. Usa esto como base para todas las recomendaciones.
 2. **Análisis proactivo**: Identifica oportunidades (ej. alto margen de ganancia) y riesgos (ej. inventario sin rotación) basados en los datos, incluso si son limitados.
 3. **Estrategias de arranque**: Sugiere acciones específicas para iniciar ventas, como:
-   - Marketing local en "{$contexto['almacenes'][0]['ubicacion']}" (ej. redes sociales, volantes).
+   - Marketing local en "{$ubicacionPrincipal}" (ej. redes sociales, volantes).
    - Promociones iniciales (ej. descuentos, paquetes de prueba).
    - Identificación de clientes potenciales (ej. ferreterías, talleres).
 4. **Gestión de inventario**: Propón evaluar la demanda de los productos actuales y diversificar si es necesario. Sugiere reabastecimiento solo si hay señales de interés.
 5. **Optimización de recursos**: Recomienda negociar con proveedores (ej. "hola") para costos claros y rentables, y evaluar la necesidad de más personal además de "Admin User".
 6. **Enfoque financiero**: Usa el margen de ganancia teórico para proponer precios competitivos que atraigan clientes sin sacrificar rentabilidad.
 7. **Crecimiento sostenible**: Ofrece ideas para adquirir y retener clientes (ej. programas de lealtad, seguimiento post-venta).
-8. **Datos limitados**: Si faltan datos, haz supuestos razonables basados en el contexto (ej. demanda local en "{$contexto['almacenes'][0]['ubicacion']}") y explícalos.
+8. **Datos limitados**: Si faltan datos, haz supuestos razonables basados en el contexto (ej. demanda local en "{$ubicacionPrincipal}") y explícalos.
 9. **Tono y estilo**: Responde en un tono profesional, estratégico y orientado a resultados, con pasos claros y medibles.
 **Formato de la respuesta**:
 - **Análisis breve**: Resume la situación actual en 2-3 líneas.
 - **Recomendaciones**: Proporciona al menos 3 acciones específicas, detalladas y prácticas.
 - Usa listas o viñetas para claridad y facilidad de implementación.
 EOD;
-        $postUrl = "https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.model') . ":generateContent?key=" . config('services.gemini.api_key');
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])->post($postUrl, [
-            'contents' => [
-                [
-                    'parts' => [
-                        ['text' => $prompt]
-                    ]
-                ]
-            ]
-        ]);
+        $postUrl = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+        $response = rescue(
+            fn() => Http::timeout(30)->withHeaders([
+                'Content-Type' => 'application/json',
+                'x-goog-api-key' => $apiKey,
+            ])->post($postUrl, [
+                'model' => $model,
+                'input' => $prompt,
+            ]),
+            report: false,
+        );
+
+        if ($response === null) {
+            return 'No se pudo conectar con Gemini. Verifica la conexion a internet y la clave GEMINI_API_KEY.';
+        }
+
+        if (! $response->successful()) {
+            $error = $response->json('error.message')
+                ?? $response->json('0.error.message')
+                ?? $response->body();
+            return 'Gemini respondio con error HTTP ' . $response->status() . ': ' . $error;
+        }
+
         $respuesta = $response->json();
-        $textoRespuesta = $respuesta['candidates'][0]['content']['parts'][0]['text'] ?? 'No se obtuvo respuesta 😔.';
-        $consultasRestantes = $limiteDiario - ($consultasRealizadas + 1);
+        $textoRespuesta = $this->extraerTextoGemini($respuesta);
+        Cache::put($cacheKey, $consultasRealizadas + 1, now()->endOfDay());
+        $consultasRestantes = self::LIMITE_DIARIO_GEMINI - ($consultasRealizadas + 1);
         $textoRespuesta .= "\n\n(Te quedan " . $consultasRestantes . " consultas hoy.)";
 
         return $textoRespuesta;
     }
 
+    private function extraerTextoGemini(array $respuesta): string
+    {
+        if (isset($respuesta['output_text']) && is_string($respuesta['output_text'])) {
+            return $respuesta['output_text'];
+        }
+
+        $textos = [];
+
+        foreach ($respuesta['steps'] ?? [] as $step) {
+            foreach ($step['modelOutput']['content'] ?? [] as $content) {
+                if (isset($content['text']) && is_string($content['text'])) {
+                    $textos[] = $content['text'];
+                }
+            }
+        }
+
+        if ($textos !== []) {
+            return trim(implode("\n", $textos));
+        }
+
+        return $respuesta['candidates'][0]['content']['parts'][0]['text'] ?? 'No se obtuvo respuesta.';
+    }
     private function formatArray(array $array): string
     {
         if (empty($array)) {
@@ -793,3 +849,4 @@ EOD;
         return $respuesta;
     }
 }
+
